@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>La cassaforte del folletto — online multi</title>
+  <style>
+    :root{ --bg:#f6f9ff;--card:#fff;--ink:#0f172a;--muted:#64748b;--brand:#7c3aed;--ok:#059669;--warn:#f59e0b;--danger:#dc2626;--slot:#eef2ff;--amber:#fde68a;--center:#f5d0fe;}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,Inter,Segoe UI,Roboto,Arial}
+    .wrap{max-width:1000px;margin:0 auto;padding:20px}
+    .card{background:var(--card);border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 8px 24px rgba(2,6,23,.06);padding:14px;margin:12px 0}
+    .layout{display:grid;gap:14px} @media(min-width:980px){.layout{grid-template-columns:1.2fr .9fr .9fr}}
+    .btn{appearance:none;border:0;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
+    .btn.primary{background:var(--brand);color:#fff} .btn.ghost{background:#eef2ff;color:#0f172a}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+    .pill{display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;font-size:.9rem}
+    .grid{display:grid;gap:10px} .grid4{grid-template-columns:repeat(4,1fr)}
+    .slot{background:var(--slot);border:1px dashed #c7d2fe;border-radius:12px;padding:10px;text-align:center}
+    .slot.occ{background:var(--amber);border-color:#fbbf24}
+    .center{background:var(--center);border:1px dashed #e879f9;border-radius:16px;padding:12px;text-align:center;margin-top:10px}
+    .players{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+    .players li{display:flex;justify-content:space-between;align-items:center;border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#fff}
+    .players .dead{background:#fee2e2;color:#7f1d1d}
+    .log{height:260px;overflow:auto;border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#fff;font-size:.92rem}
+    .mini{font-size:.9rem;color:var(--muted)} .hdr{display:flex;align-items:center;gap:10px}
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <header class="card hdr">
+      <h1 style="margin-right:auto">La cassaforte del folletto — multi</h1>
+      <span class="pill">Stato: <span id="net">🟡 connessione…</span></span>
+      <button id="reload" class="btn ghost">Ricarica</button>
+    </header>
+
+    <section id="lobby" class="card">
+      <h2>Crea o unisciti a una stanza</h2>
+      <div class="mini">Condividi il <b>codice stanza</b> con chi gioca su altri dispositivi/luoghi.</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px">
+        <label>Giocatori <input id="playersCount" type="number" min="3" max="6" value="3" style="width:80px;padding:8px;border:1px solid #e2e8f0;border-radius:10px"/></label>
+        <button id="createBtn" class="btn primary">Crea stanza (Host)</button>
+        <input id="joinCode" placeholder="Codice" style="padding:8px;border:1px solid #e2e8f0;border-radius:10px"/>
+        <button id="joinBtn" class="btn ghost">Unisciti</button>
+      </div>
+      <hr style="opacity:.2;margin:10px 0"/>
+      <h3>Prenota un posto</h3>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input id="nick" placeholder="Nome" style="padding:8px;border:1px solid #e2e8f0;border-radius:10px"/>
+        <select id="avatar" style="padding:8px;border:1px solid #e2e8f0;border-radius:10px">
+          <option>🧚</option><option>🧝</option><option>🦄</option><option>🐉</option><option>🧙</option><option>🦊</option><option>🐿️</option><option>🕊️</option>
+        </select>
+        <select id="seat" style="padding:8px;border:1px solid #e2e8f0;border-radius:10px;min-width:120px"></select>
+        <button id="claimBtn" class="btn ghost" disabled>Prendi posto</button>
+      </div>
+      <div id="roomHint" class="mini" style="margin-top:8px"></div>
+    </section>
+
+    <section id="game" class="layout" style="display:none">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div>
+            <div class="mini">Turno di</div>
+            <div style="font-weight:800"><span id="cur">-</span></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button id="rollBtn" class="btn primary">🎲 Lancia</button>
+            <div class="pill"><span id="dA">-</span> + <span id="dB">-</span> = </div>
+            <input id="sum" type="number" placeholder="Somma" style="width:100px;padding:8px;border:1px solid #e2e8f0;border-radius:10px"/>
+            <button id="confirmBtn" class="btn ghost">Conferma</button>
+            <button id="actionBtn" class="btn ghost" disabled>Azione</button>
+            <span id="paused" class="pill" style="display:none">⏸️ Pausa</span>
+          </div>
+        </div>
+        <div class="grid grid4" style="margin-top:10px">
+          <div class="slot" data-num="3"><div>3</div><div class="mini" id="s3">—</div></div>
+          <div class="slot" data-num="4"><div>4</div><div class="mini" id="s4">—</div></div>
+          <div class="slot" data-num="5"><div>5</div><div class="mini" id="s5">—</div></div>
+          <div class="slot" data-num="6"><div>6</div><div class="mini" id="s6">—</div></div>
+          <div class="slot" data-num="8"><div>8</div><div class="mini" id="s8">—</div></div>
+          <div class="slot" data-num="9"><div>9</div><div class="mini" id="s9">—</div></div>
+          <div class="slot" data-num="10"><div>10</div><div class="mini" id="s10">—</div></div>
+          <div class="slot" data-num="11"><div>11</div><div class="mini" id="s11">—</div></div>
+        </div>
+        <div class="center" style="margin-top:10px"><strong>Centro (7)</strong> — Monete: <span id="centerCount">0</span></div>
+      </div>
+
+      <div class="card">
+        <h2>Giocatori</h2>
+        <ul id="players" class="players"></ul>
+        <div class="mini">Posti occupati bloccati automaticamente.</div>
+        <div class="mini" id="gameOver" style="display:none;margin-top:8px;font-weight:800;color:#059669"></div>
+        <div class="card" style="background:#faf5ff;margin-top:10px">
+          <div class="mini"><strong>Comandi Host</strong></div>
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+            <button id="pauseBtn" class="btn ghost">⏸️ Pausa</button>
+            <button id="resumeBtn" class="btn ghost">▶️ Riprendi</button>
+            <button id="resetBtn" class="btn ghost">🔄 Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Registro</h2>
+        <div id="log" class="log"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const SFX = (()=>{
+      const ctx = new (window.AudioContext||window.webkitAudioContext)();
+      const play=(f=700,d=.07,t='sine',v=.08)=>{ const o=ctx.createOscillator(), g=ctx.createGain(); g.gain.value=v; o.type=t; o.frequency.value=f; o.connect(g); g.connect(ctx.destination); const now=ctx.currentTime; o.start(now); o.stop(now+d); };
+      return { ok(){play(740,.08,'sine')}, err(){play(220,.14,'sawtooth')}, roll(){play(420,.06,'triangle'); setTimeout(()=>play(640,.06,'triangle'),80)}, win(){play(880,.12); setTimeout(()=>play(990,.12),130); setTimeout(()=>play(1040,.12),260);} };
+    })();
+
+    let socket, ST=null, ME={ seat:null, isHost:false }, ROOM=null;
+
+    const el=(s)=>document.querySelector(s);
+    const BORDER=[3,4,5,6,8,9,10,11];
+
+    function renderAll(){
+      if(!ST){ el('#game').style.display='none'; refreshSeats(); return; }
+      el('#lobby').style.display='none';
+      el('#game').style.display='grid';
+      el('#cur').textContent = (ST.players?.[ST.current]?.nick) || `Giocatore ${ST.current+1}`;
+      el('#paused').style.display = ST.paused ? 'inline-flex':'none';
+      el('#dA').textContent = ST.lastRoll?.a ?? '-'; el('#dB').textContent = ST.lastRoll?.b ?? '-';
+      el('#centerCount').textContent = ST.centerCoins;
+      BORDER.forEach(n=>{
+        const lab = document.getElementById('s'+(n===10?'10':n));
+        lab.textContent = ST.borders[n] ? '💰 1 moneta' : '—';
+        lab.parentElement.classList.toggle('occ', !!ST.borders[n]);
+      });
+      // players
+      const ul=el('#players'); ul.innerHTML='';
+      ST.coins.forEach((c,i)=>{
+        const li=document.createElement('li');
+        if(ST.eliminated[i]) li.classList.add('dead');
+        const meta = ST.players?.[i];
+        const name = meta? `${meta.avatar} ${meta.nick}`:`Giocatore ${i+1}`;
+        const badge = (!ST.eliminated[i] && c===0 && (ST.grace[i]===1||ST.grace[i]===2)) ? `<span class="pill" style="background:#fff7ed;border:1px solid #fed7aa">⚠️ Ultima chance</span>` : '';
+        li.innerHTML = `<div class="pill">${name} ${badge}</div><div class="mini">Monete: <strong>${c}</strong> • Lanci: ${(ST.rolls[i]||0)}/8</div>`;
+        ul.appendChild(li);
+      });
+      setActionBtn();
+      renderLog();
+    }
+
+    function renderLog(){
+      const box=el('#log'); box.innerHTML='';
+      (ST?.log||[]).forEach(line=>{ const d=document.createElement('div'); d.textContent=line; box.appendChild(d); });
+    }
+
+    function refreshSeats(){
+      const sel=el('#seat'); sel.innerHTML='';
+      const p = ST?.coins?.length || parseInt(el('#playersCount').value||'3',10);
+      for(let i=0;i<p;i++){
+        const taken = !!(ST?.players && ST.players[i]);
+        const opt=document.createElement('option'); opt.value=i; opt.disabled=taken; opt.textContent=`Posto ${i+1}${taken?' (occupato)':''}`; sel.appendChild(opt);
+      }
+    }
+
+    function inTurn(){
+      return ST && ME.seat!==null && ST.current===ME.seat && !ST.eliminated[ME.seat] && !ST.paused;
+    }
+
+    function setActionBtn(){
+      const b=el('#actionBtn'); const m=ST?.requiredMove;
+      b.disabled = !inTurn() || !m || (m.type!=='collect' && m.type!=='collectAll' && m.type!=='deposit' && m.type!=='withdraw');
+      if(!m) { b.textContent='Azione'; return; }
+      if(m.type==='collect') b.textContent='Raccogli TUTTE dai bordi';
+      else if(m.type==='collectAll') b.textContent='Raccogli TUTTO (bordi+centro)';
+      else if(m.type==='deposit') b.textContent= m.to==='center' ? 'Deposita 1 al CENTRO' : `Deposita 1 nel ${m.to}`;
+      else if(m.type==='withdraw') b.textContent= `Preleva 1 dal ${m.from}`;
+    }
+
+    function boot(){
+      socket = io();
+      socket.on('connect', ()=>{ el('#net').textContent='🟢 connesso'; el('#claimBtn').disabled=false; });
+      socket.on('disconnect', ()=>{ el('#net').textContent='🔴 disconnesso'; el('#claimBtn').disabled=true; });
+      socket.on('errorMsg', msg=> alert(msg));
+      socket.on('state', st=>{ ST=st; renderAll(); });
+      socket.on('roomCreated', ({ code })=>{
+        ROOM = code;
+        el('#roomHint').textContent = `Codice stanza: ${code}`;
+      });
+      socket.on('gameOver', ({ winners, coins })=>{
+        const names = winners.map(i=> ST.players?.[i]?.nick || `Giocatore ${i+1}`);
+        const box = document.getElementById('gameOver');
+        box.style.display='block';
+        box.textContent = `Partita terminata — Vincitore/i: ${names.join(', ')}`;
+        SFX.win();
+      });
+
+      el('#createBtn').addEventListener('click', ()=>{
+        const p = Math.max(3, Math.min(6, parseInt(el('#playersCount').value||'3',10)));
+        socket.emit('createRoom', { playersCount: p });
+        ME.isHost = true;
+        el('#roomHint').textContent = 'Stanza creata. Condividi il codice sopra.';
+      });
+      el('#joinBtn').addEventListener('click', ()=>{
+        const code = (el('#joinCode').value||'').trim().toUpperCase();
+        if(!code){ alert('Inserisci il codice stanza'); return; }
+        socket.emit('joinRoom', { code });
+        ROOM = code;
+        el('#roomHint').textContent = `Collegato alla stanza: ${code}`;
+      });
+      el('#claimBtn').addEventListener('click', ()=>{
+        if(!ROOM){ alert('Prima crea o unisciti a una stanza.'); return; }
+        const seat = parseInt(el('#seat').value||'-1',10);
+        const nick = (el('#nick').value||'').trim() || `Giocatore ${seat+1}`;
+        const avatar = el('#avatar').value || '🧚';
+        socket.emit('claimSeat', { seat, nick, avatar });
+      });
+      el('#reload').addEventListener('click', ()=> location.reload());
+
+      // comandi di gioco
+      el('#rollBtn').addEventListener('click', ()=>{ if(!inTurn()) return; socket.emit('roll'); SFX.roll(); });
+      el('#confirmBtn').addEventListener('click', ()=>{ if(!inTurn() || !ST?.lastRoll) return; const sum=parseInt(el('#sum').value||'0',10); socket.emit('confirmSum', { sum }); SFX.ok(); });
+      el('#actionBtn').addEventListener('click', ()=>{ if(!inTurn() || !ST?.requiredMove) return; socket.emit('doAction'); SFX.ok(); });
+
+      // host controls
+      el('#pauseBtn').addEventListener('click', ()=> ME.isHost && socket.emit('hostControl',{action:'pause'}));
+      el('#resumeBtn').addEventListener('click', ()=> ME.isHost && socket.emit('hostControl',{action:'resume'}));
+      el('#resetBtn').addEventListener('click', ()=> ME.isHost && socket.emit('hostControl',{action:'reset'}));
+
+      // aggiorna posti disponibili dinamicamente
+      setInterval(refreshSeats, 1000);
+    }
+
+    window.addEventListener('DOMContentLoaded', boot);
+  </script>
+</body>
+</html>
